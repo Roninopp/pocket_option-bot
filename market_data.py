@@ -9,12 +9,9 @@ class MarketData:
         logger.info("Market Data initialized", "MARKET_DATA")
         self.symbols = ['EURUSD', 'GBPUSD', 'USDJPY', 'XAUUSD']
     
-    def get_sample_data(self, symbol, timeframe, candles=50):
-        """Generate realistic sample market data"""
+    def get_realistic_data(self, symbol, timeframe, candles=50):
+        """Generate more realistic market data with actual trends"""
         try:
-            logger.debug(f"Generating sample data for {symbol} {timeframe}", "MARKET_DATA")
-            
-            # Base price for different symbols
             base_prices = {
                 'EURUSD': 1.0850,
                 'GBPUSD': 1.2650,
@@ -25,13 +22,20 @@ class MarketData:
             base_price = base_prices.get(symbol, 1.0850)
             data = []
             
+            # Add realistic trends
+            trend_direction = random.choice([-1, 1])
+            trend_strength = random.uniform(0.001, 0.005)
+            
             for i in range(candles):
-                # Realistic price movement
-                open_price = base_price
-                volatility = 0.002 if 'XAU' not in symbol else 5.0  # Higher volatility for Gold
+                # Realistic price movement with trend
+                trend_effect = trend_direction * trend_strength * i
+                open_price = base_price + trend_effect
                 
-                high = open_price + abs(random.gauss(0, volatility))
-                low = open_price - abs(random.gauss(0, volatility))
+                volatility = 0.002 if 'XAU' not in symbol else 5.0
+                
+                # Realistic candle generation
+                high = open_price + abs(random.gauss(0, volatility)) * 1.5
+                low = open_price - abs(random.gauss(0, volatility)) * 1.5
                 close = random.uniform(low, high)
                 
                 # Ensure proper high/low
@@ -49,49 +53,15 @@ class MarketData:
                 }
                 
                 data.append(candle_data)
-                base_price = close  # Next candle opens at previous close
+                base_price = close
             
             df = pd.DataFrame(data)
-            logger.debug(f"Generated {len(df)} candles for {symbol}", "MARKET_DATA")
             return df
             
         except Exception as e:
-            logger.error(f"Error generating sample data: {e}", "MARKET_DATA", exc_info=True)
+            logger.error(f"Error generating data: {e}", "MARKET_DATA", exc_info=True)
             return pd.DataFrame()
     
-    def add_manual_pattern(self, df, pattern_type):
-        """Manually add specific patterns for testing"""
-        try:
-            if len(df) < 2:
-                return df
-            
-            if pattern_type == "BULLISH_ENGULFING":
-                # Create bullish engulfing pattern
-                df.at[df.index[-2], 'open'] = 1.0860
-                df.at[df.index[-2], 'high'] = 1.0865
-                df.at[df.index[-2], 'low'] = 1.0840
-                df.at[df.index[-2], 'close'] = 1.0845  # Bearish candle
-                
-                df.at[df.index[-1], 'open'] = 1.0840
-                df.at[df.index[-1], 'high'] = 1.0870
-                df.at[df.index[-1], 'low'] = 1.0835
-                df.at[df.index[-1], 'close'] = 1.0865  # Bullish candle that engulfs previous
-            
-            elif pattern_type == "BEARISH_ENGULFING":
-                # Create bearish engulfing pattern
-                df.at[df.index[-2], 'open'] = 1.0840
-                df.at[df.index[-2], 'high'] = 1.0850
-                df.at[df.index[-2], 'low'] = 1.0830
-                df.at[df.index[-2], 'close'] = 1.0845  # Bullish candle
-                
-                df.at[df.index[-1], 'open'] = 1.0850
-                df.at[df.index[-1], 'high'] = 1.0855
-                df.at[df.index[-1], 'low'] = 1.0825
-                df.at[df.index[-1], 'close'] = 1.0830  # Bearish candle that engulfs previous
-            
-            logger.debug(f"Manual {pattern_type} pattern added", "MARKET_DATA")
-            return df
-            
-        except Exception as e:
-            logger.error(f"Error adding manual pattern: {e}", "MARKET_DATA", exc_info=True)
-            return df
+    def get_sample_data(self, symbol, timeframe, candles=50):
+        """Use realistic data instead of random"""
+        return self.get_realistic_data(symbol, timeframe, candles)
