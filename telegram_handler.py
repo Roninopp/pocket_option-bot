@@ -1,5 +1,7 @@
+cat > telegram_handler.py << 'EOF'
 import requests
 import time
+import threading
 from logs import logger
 
 class TelegramHandler:
@@ -8,7 +10,9 @@ class TelegramHandler:
         self.bot_token = "7914882777:AAGv_940utBNry2JXfwbzhtZWxtyK1qMO24"
         self.chat_id = "-1002903475551"
         self.base_url = f"https://api.telegram.org/bot{self.bot_token}"
-    
+        self.last_update_id = 0
+        self.commands_running = False
+        
     def send_prediction(self, prediction):
         """Send prediction to Telegram"""
         try:
@@ -33,6 +37,23 @@ class TelegramHandler:
                 
         except Exception as e:
             logger.error(f"Error sending Telegram message: {e}", "TELEGRAM", exc_info=True)
+            return False
+    
+    def send_message(self, text):
+        """Send simple message to Telegram"""
+        try:
+            url = f"{self.base_url}/sendMessage"
+            payload = {
+                'chat_id': self.chat_id,
+                'text': text,
+                'parse_mode': 'HTML'
+            }
+            
+            response = requests.post(url, json=payload, timeout=10)
+            return response.status_code == 200
+            
+        except Exception as e:
+            logger.error(f"Error sending message: {e}", "TELEGRAM")
             return False
     
     def _format_prediction_message(self, prediction):
@@ -79,6 +100,8 @@ class TelegramHandler:
 🕐 <b>Time:</b> {time_str}
 
 ⚠️ <i>Always use proper risk management</i>
+
+💬 <i>Use /status for bot status</i>
             """
             
             return message.strip()
@@ -103,3 +126,14 @@ class TelegramHandler:
         except Exception as e:
             logger.error(f"Telegram connection test error: {e}", "TELEGRAM", exc_info=True)
             return False
+
+    def get_bot_commands(self):
+        """Get available bot commands"""
+        commands = {
+            '/status': 'Get bot status and statistics',
+            '/logs': 'Get recent logs (last 10 lines)',
+            '/stop': 'Stop the bot',
+            '/start': 'Start the bot'
+        }
+        return commands
+EOF
