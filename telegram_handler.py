@@ -1,4 +1,4 @@
- # telegram_handler.py (UPDATED)
+# telegram_handler.py (FIXED)
 import requests
 import time
 import threading
@@ -18,7 +18,88 @@ class TelegramHandler:
         
         # Register command handlers
         self._register_handlers()
-        
+    
+    def send_message(self, text, chat_id=None):
+        """Send message to Telegram - FIXED METHOD"""
+        try:
+            if chat_id is None:
+                chat_id = self.chat_id
+                
+            url = f"{self.base_url}/sendMessage"
+            payload = {
+                'chat_id': chat_id,
+                'text': text,
+                'parse_mode': 'HTML'
+            }
+            
+            response = requests.post(url, json=payload, timeout=10)
+            return response.status_code == 200
+            
+        except Exception as e:
+            logger.error(f"Error sending message: {e}", "TELEGRAM")
+            return False
+    
+    def send_prediction(self, prediction):
+        """Send prediction to Telegram"""
+        try:
+            message = self._format_prediction_message(prediction)
+            return self.send_message(message)
+                
+        except Exception as e:
+            logger.error(f"Error sending Telegram message: {e}", "TELEGRAM", exc_info=True)
+            return False
+    
+    def _format_prediction_message(self, prediction):
+        """Format prediction message for Telegram"""
+        try:
+            symbol = prediction.get('symbol', 'EURUSD')
+            direction = prediction.get('direction', 'NEUTRAL')
+            timeframe = prediction.get('timeframe', '5min')
+            pattern_type = prediction.get('pattern_type', 'Unknown Pattern')
+            confidence = prediction.get('confidence', 0)
+            reason = prediction.get('reason', 'Pattern based prediction')
+            
+            # Format timestamp
+            timestamp = prediction.get('timestamp')
+            if hasattr(timestamp, 'strftime'):
+                time_str = timestamp.strftime('%Y-%m-%d %H:%M:%S UTC+7')
+            else:
+                time_str = "Unknown time"
+            
+            # Emojis based on direction
+            if direction == 'BUY':
+                direction_emoji = "🟢"
+                action = "LONG"
+            elif direction == 'SELL':
+                direction_emoji = "🔴" 
+                action = "SHORT"
+            else:
+                direction_emoji = "🟡"
+                action = "WAIT"
+            
+            message = f"""
+🎯 <b>TRADING SIGNAL DETECTED</b> 🎯
+
+{direction_emoji} <b>Direction:</b> {action}
+📊 <b>Symbol:</b> {symbol}
+⏰ <b>Timeframe:</b> {timeframe}
+🔍 <b>Pattern:</b> {pattern_type}
+💪 <b>Confidence:</b> {confidence}%
+
+📝 <b>Reason:</b>
+{reason}
+
+🕐 <b>Time:</b> {time_str}
+
+⚠️ <i>Always use proper risk management</i>
+            """
+            
+            return message.strip()
+            
+        except Exception as e:
+            logger.error(f"Error formatting message: {e}", "TELEGRAM", exc_info=True)
+            return "Trading signal generated - check logs for details"
+    
     def _register_handlers(self):
         """Register command handlers"""
         self.command_handlers = {
@@ -52,7 +133,7 @@ class TelegramHandler:
                     for update in updates:
                         self._process_update(update)
                 
-                time.sleep(2)  # Poll every 2 seconds
+                time.sleep(2)
                 
             except Exception as e:
                 logger.error(f"Error in command polling: {e}", "TELEGRAM", exc_info=True)
@@ -89,7 +170,6 @@ class TelegramHandler:
                 chat_id = message['chat']['id']
                 text = message['text'].strip()
                 
-                # Check if it's a command
                 if text.startswith('/'):
                     self._handle_command(chat_id, text)
                     
@@ -202,4 +282,12 @@ The bot automatically analyzes markets and sends trading signals when patterns a
             logger.error(f"Error reading logs: {e}", "TELEGRAM")
             return f"Error reading logs: {e}"
     
-    # ... [KEEP ALL EXISTING METHODS LIKE send_prediction, send_message, etc.]
+    def test_connection(self):
+        """Test Telegram connection"""
+        try:
+            url = f"{self.base_url}/getMe"
+            response = requests.get(url, timeout=10)
+            return response.status_code == 200
+        except Exception as e:
+            logger.error(f"Telegram connection test error: {e}", "TELEGRAM")
+            return False
