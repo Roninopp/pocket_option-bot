@@ -1,4 +1,9 @@
 cd ~/pocket_option-bot
+
+# Remove the corrupted file
+rm bot_core.py
+
+# Create clean bot_core.py
 cat > bot_core.py << 'EOF'
 import time
 import threading
@@ -15,10 +20,9 @@ class TradingBotCore:
         self.timeframes = ['5min', '15min']
         self.symbols = ['EURUSD', 'GBPUSD', 'USDJPY', 'XAUUSD']
         self.is_running = False
-        self.analysis_interval = 60  # Increased to 60 seconds to reduce spam
+        self.analysis_interval = 60
         self.last_signal_time = {}
         
-        # UTC+7 Timezone
         self.tz = timezone(timedelta(hours=7))
         
         self.pattern_detector = PatternDetector()
@@ -28,16 +32,14 @@ class TradingBotCore:
         logger.info("Trading Bot Core initialized successfully", "BOT_CORE")
     
     def get_utc7_time(self):
-        """Get current time in UTC+7"""
         return datetime.now(self.tz)
     
     def start_bot(self):
         try:
             logger.info("Starting Trading Bot...", "BOT_CORE")
             
-            # Test Telegram connection
             if not self.telegram_handler.test_connection():
-                logger.warning("Telegram connection test failed, but continuing...", "BOT_CORE")
+                logger.warning("Telegram connection test failed", "BOT_CORE")
             
             self.is_running = True
             self.analysis_thread = threading.Thread(target=self._analysis_loop)
@@ -73,11 +75,10 @@ class TradingBotCore:
     
     def _analyze_symbol(self, symbol, timeframe):
         try:
-            # Add cooldown between signals for same symbol (5 minutes)
             signal_key = f"{symbol}_{timeframe}"
             current_time = time.time()
             if signal_key in self.last_signal_time:
-                if current_time - self.last_signal_time[signal_key] < 300:  # 5 minutes cooldown
+                if current_time - self.last_signal_time[signal_key] < 300:
                     return
             
             logger.debug(f"Analyzing {symbol} on {timeframe}", "SYMBOL_ANALYSIS")
@@ -90,41 +91,35 @@ class TradingBotCore:
             
             patterns = self.pattern_detector.detect_patterns(df, timeframe)
             
-            # Only send signals for high-confidence patterns with market structure confirmation
             valid_patterns = []
             market_structure = None
             
             for pattern in patterns:
                 if pattern['type'] in ['BULLISH_ENGULFING', 'BEARISH_ENGULFING', 'BULLISH_PINBAR', 'BEARISH_PINBAR']:
-                    # Check confidence level (only high confidence signals)
                     if pattern.get('confidence', 0) >= 70:
                         valid_patterns.append(pattern)
                 
                 if pattern['type'] == 'MARKET_STRUCTURE':
                     market_structure = pattern
             
-            # Only send signal if we have both pattern and market structure
             if valid_patterns and market_structure:
-                # Additional filter: pattern direction should match market trend
                 for pattern in valid_patterns:
                     if self._is_trade_valid(pattern, market_structure):
                         prediction = self._generate_prediction(pattern, symbol, timeframe, market_structure)
                         if prediction:
                             if self.telegram_handler.send_prediction(prediction):
                                 self.last_signal_time[signal_key] = current_time
-                                time.sleep(2)  # Avoid Telegram rate limiting
-                                break  # Only send one signal per analysis cycle
+                                time.sleep(2)
+                                break
             
         except Exception as e:
             logger.error(f"Error analyzing {symbol}: {e}", "SYMBOL_ANALYSIS", exc_info=True)
     
     def _is_trade_valid(self, pattern, market_structure):
-        """Validate if trade makes sense based on market structure"""
         try:
             trend = market_structure.get('trend', 'SIDEWAYS')
             direction = pattern.get('direction', '')
             
-            # Don't trade against strong trends
             if trend == 'UPTREND' and direction == 'SELL':
                 return False
             elif trend == 'DOWNTREND' and direction == 'BUY':
@@ -168,7 +163,6 @@ class TradingBotCore:
         return reason
 
     def get_bot_status(self):
-        """Get bot status for /status command"""
         status = {
             'running': self.is_running,
             'symbols_analyzed': len(self.symbols),
@@ -178,7 +172,6 @@ class TradingBotCore:
         }
         return status
 
-# Global instance
 trading_bot = TradingBotCore()
 
 def main():
