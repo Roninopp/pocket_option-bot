@@ -1,3 +1,5 @@
+cd ~/pocket_option-bot
+cat > bot_core.py << 'EOF'
 import time
 import threading
 from datetime import datetime, timezone, timedelta
@@ -13,7 +15,8 @@ class TradingBotCore:
         self.timeframes = ['5min', '15min']
         self.symbols = ['EURUSD', 'GBPUSD', 'USDJPY', 'XAUUSD']
         self.is_running = False
-        self.analysis_interval = 30  # seconds
+        self.analysis_interval = 60  # Increased to 60 seconds to reduce spam
+        self.last_signal_time = {}
         
         # UTC+7 Timezone
         self.tz = timezone(timedelta(hours=7))
@@ -70,6 +73,13 @@ class TradingBotCore:
     
     def _analyze_symbol(self, symbol, timeframe):
         try:
+            # Add cooldown between signals for same symbol (5 minutes)
+            signal_key = f"{symbol}_{timeframe}"
+            current_time = time.time()
+            if signal_key in self.last_signal_time:
+                if current_time - self.last_signal_time[signal_key] < 300:  # 5 minutes cooldown
+                    return
+            
             logger.debug(f"Analyzing {symbol} on {timeframe}", "SYMBOL_ANALYSIS")
             
             df = self.market_data.get_sample_data(symbol, timeframe)
@@ -80,24 +90,54 @@ class TradingBotCore:
             
             patterns = self.pattern_detector.detect_patterns(df, timeframe)
             
+            # Only send signals for high-confidence patterns with market structure confirmation
+            valid_patterns = []
+            market_structure = None
+            
             for pattern in patterns:
                 if pattern['type'] in ['BULLISH_ENGULFING', 'BEARISH_ENGULFING', 'BULLISH_PINBAR', 'BEARISH_PINBAR']:
-                    prediction = self._generate_prediction(pattern, symbol, timeframe, df)
-                    if prediction:
-                        self.telegram_handler.send_prediction(prediction)
-                        time.sleep(1)  # Avoid rate limiting
+                    # Check confidence level (only high confidence signals)
+                    if pattern.get('confidence', 0) >= 70:
+                        valid_patterns.append(pattern)
+                
+                if pattern['type'] == 'MARKET_STRUCTURE':
+                    market_structure = pattern
+            
+            # Only send signal if we have both pattern and market structure
+            if valid_patterns and market_structure:
+                # Additional filter: pattern direction should match market trend
+                for pattern in valid_patterns:
+                    if self._is_trade_valid(pattern, market_structure):
+                        prediction = self._generate_prediction(pattern, symbol, timeframe, market_structure)
+                        if prediction:
+                            if self.telegram_handler.send_prediction(prediction):
+                                self.last_signal_time[signal_key] = current_time
+                                time.sleep(2)  # Avoid Telegram rate limiting
+                                break  # Only send one signal per analysis cycle
             
         except Exception as e:
             logger.error(f"Error analyzing {symbol}: {e}", "SYMBOL_ANALYSIS", exc_info=True)
     
-    def _generate_prediction(self, pattern, symbol, timeframe, df):
+    def _is_trade_valid(self, pattern, market_structure):
+        """Validate if trade makes sense based on market structure"""
         try:
-            market_structure = None
-            for p in self.pattern_detector.detect_patterns(df, timeframe):
-                if p['type'] == 'MARKET_STRUCTURE':
-                    market_structure = p
-                    break
+            trend = market_structure.get('trend', 'SIDEWAYS')
+            direction = pattern.get('direction', '')
             
+            # Don't trade against strong trends
+            if trend == 'UPTREND' and direction == 'SELL':
+                return False
+            elif trend == 'DOWNTREND' and direction == 'BUY':
+                return False
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error validating trade: {e}", "VALIDATION")
+            return True
+    
+    def _generate_prediction(self, pattern, symbol, timeframe, market_structure):
+        try:
             prediction = {
                 'symbol': symbol,
                 'direction': pattern['direction'],
@@ -124,8 +164,19 @@ class TradingBotCore:
             if market_structure.get('sweep_detected'):
                 reason += " with liquidity sweep"
         
-        reason += ". Confirmed by price action and market structure analysis."
+        reason += ". High confidence signal with trend confirmation."
         return reason
+
+    def get_bot_status(self):
+        """Get bot status for /status command"""
+        status = {
+            'running': self.is_running,
+            'symbols_analyzed': len(self.symbols),
+            'timeframes': self.timeframes,
+            'last_analysis': self.get_utc7_time().strftime('%Y-%m-%d %H:%M:%S UTC+7'),
+            'signals_sent': len(self.last_signal_time)
+        }
+        return status
 
 # Global instance
 trading_bot = TradingBotCore()
@@ -151,3 +202,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+EOF
