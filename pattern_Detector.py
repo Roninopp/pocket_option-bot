@@ -186,4 +186,5 @@ class PatternDetector:
             
         except Exception as e:
             logger.error(f"Error detecting sweep: {e}", "PATTERN_DETECTOR", exc_info=True)
+
             return False
