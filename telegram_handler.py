@@ -1,4 +1,3 @@
-cat > telegram_handler.py << 'EOF'
 import requests
 import time
 import threading
@@ -136,4 +135,3 @@ class TelegramHandler:
             '/start': 'Start the bot'
         }
         return commands
-EOF
